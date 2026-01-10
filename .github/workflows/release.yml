@@ -1,0 +1,79 @@
+# This workflow will build and publish Windows EXE to GitHub Releases
+# After successful build, it will create a new release with the EXE file
+
+name: Build and Release
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -r requirements.txt
+        python -m pip install pyinstaller
+        
+    - name: Build EXE
+      run: |
+        python build.py --clean
+        
+    - name: Upload EXE artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: cad-converter
+        path: dist/cad_converter.exe
+        
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ github.run_number }}
+        release_name: CAD Converter v${{ github.run_number }}
+        body: |
+          ## CAD图像转换器 v${{ github.run_number }}
+          
+          ### 新功能
+          - 单线条模式：使用scikit-image骨架化算法
+          - 高精度模式：支持8/16/32/48/64倍插值和曲线边缘
+          - 多图片布局工具：独立页面，支持多图片上传、拖拽、排序和导出
+          
+          ### 技术栈
+          - Python 3.11
+          - OpenCV：图像处理
+          - NumPy：数值计算
+          - SciPy：样条曲线插值
+          - scikit-image：骨架化算法
+          - ezdxf：DXF文件生成
+          
+          ### 下载
+          - Windows: cad_converter.exe
+          - 文件大小：约96MB
+          
+          ### 使用方法
+          1. 下载EXE文件
+          2. 双击运行
+          3. 上传图片，调整参数，导出DXF
+          
+          ### 系统要求
+          - Windows 10或更高版本
+          - 不需要额外安装Python（已内置）
+          
+        draft: false
+        files: |
+          dist/cad_converter.exe
