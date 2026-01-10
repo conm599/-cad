@@ -22,9 +22,79 @@ def clean_memory(*arrays):
             del arr
     gc.collect()
 
+def interpolate_points(points, factor=8):
+    """插值增加点数，提高曲线精度"""
+    if len(points) < 3:
+        print(f"点数太少({len(points)})，不进行插值")
+        return points
+    
+    print(f"开始插值：原始点数={len(points)}，倍数={factor}")
+    new_points = []
+    
+    for i in range(len(points)):
+        new_points.append(points[i])
+        
+        # 在当前点和下一个点之间插入新点
+        next_i = (i + 1) % len(points)
+        x1, y1 = points[i]
+        x2, y2 = points[next_i]
+        
+        # 插值增加点数 - 确保每个间隔都插入factor-1个点
+        for j in range(1, factor):
+            t = j / factor
+            x = x1 + (x2 - x1) * t
+            y = y1 + (y2 - y1) * t
+            new_points.append((x, y))
+    
+    print(f"插值完成：新点数={len(new_points)}，增加了{len(new_points) - len(points)}个点")
+    return new_points
+
+def smooth_curve(points):
+    """使用样条曲线平滑轮廓"""
+    if len(points) < 3:
+        return points
+    
+    try:
+        from scipy import interpolate
+        import numpy as np
+        
+        # 提取x和y坐标
+        x_coords = np.array([p[0] for p in points])
+        y_coords = np.array([p[1] for p in points])
+        
+        # 闭合曲线：添加第一个点到末尾
+        x_coords = np.append(x_coords, x_coords[0])
+        y_coords = np.append(y_coords, y_coords[0])
+        
+        # 计算参数t
+        t = np.arange(len(x_coords))
+        
+        # 创建样条插值
+        tck = interpolate.splrep(t, np.vstack([x_coords, y_coords]).T, s=0, per=True)
+        
+        # 生成更密集的点
+        t_new = np.linspace(0, len(x_coords) - 1, len(x_coords) * 8)
+        smooth_points = interpolate.splev(t_new, tck)
+        
+        # 转换为点列表
+        result = [(float(smooth_points[0][i]), float(smooth_points[1][i])) for i in range(len(smooth_points[0]))]
+        
+        return result
+    except ImportError:
+        # 如果scipy不可用，使用简单的线性插值
+        return interpolate_points(points, factor=8)
+    except Exception as e:
+        # 如果样条插值失败，使用简单的线性插值
+        print(f"平滑曲线失败: {e}")
+        return interpolate_points(points, factor=8)
+
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/multi_image')
+def multi_image():
+    return render_template('multi_image.html')
 
 @app.route('/process_preview', methods=['POST'])
 def process_preview():
@@ -66,14 +136,15 @@ def process_preview():
             # 记录新的尺寸
             final_h, final_w = binary.shape[:2]
 
-        # 单线条模式处理 - 减小线条之间的缝隙
+        # 单线条模式处理 - 使用scikit-image的骨架化算法
         if single_line:
-            # 使用膨胀操作增加线条厚度，减小缝隙
-            kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
-            # 先膨胀增加线条厚度
-            binary = cv2.dilate(binary, kernel, iterations=1)
-            # 然后进行形态学开操作平滑轮廓
-            binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+            from skimage.morphology import skeletonize
+            # 确保二值图像是0和1
+            binary_bool = (binary > 0)
+            # 使用scikit-image的骨架化算法
+            skeleton = skeletonize(binary_bool)
+            # 转换回0-255格式
+            binary = (skeleton * 255).astype(np.uint8)
 
         _, buffer = cv2.imencode('.png', binary)
         img_str = base64.b64encode(buffer).decode('utf-8')
@@ -95,6 +166,7 @@ def convert_dxf():
         single_line = request.form.get('single_line') == 'true'
         ignore_border = request.form.get('ignore_border') == 'true'
         fill_color = request.form.get('fill_color', 'none')
+        high_precision = request.form.get('high_precision', 'none')
 
         in_memory_file = np.frombuffer(file.read(), np.uint8)
         img = cv2.imdecode(in_memory_file, cv2.IMREAD_COLOR)
@@ -124,17 +196,33 @@ def convert_dxf():
             # 记录新的尺寸
             final_h, final_w = binary.shape[:2]
 
-        # 单线条模式处理 - 减小线条之间的缝隙
+        # 单线条模式处理 - 使用scikit-image的骨架化算法
         if single_line:
-            # 使用膨胀操作增加线条厚度，减小缝隙
-            kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
-            # 先膨胀增加线条厚度
-            binary = cv2.dilate(binary, kernel, iterations=1)
-            # 然后进行形态学开操作平滑轮廓
-            binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+            from skimage.morphology import skeletonize
+            # 确保二值图像是0和1
+            binary_bool = (binary > 0)
+            # 使用scikit-image的骨架化算法
+            skeleton = skeletonize(binary_bool)
+            # 转换回0-255格式
+            binary = (skeleton * 255).astype(np.uint8)
 
-        # 2. 使用 OpenCV 查找轮廓 - 提取所有轮廓（包括内部）并保留所有细节
-        contours, hierarchy = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        # 2. 使用 OpenCV 查找轮廓 - 提取所有轮廓
+        # 使用RETR_LIST提取所有轮廓（包括内部），避免只识别边框
+        
+        # 根据高精度模式选择轮廓近似方法
+        if high_precision.startswith('more_points_'):
+            # 模式1：增加曲线数量 - 保留所有轮廓点
+            # 提取倍数
+            factor = int(high_precision.split('_')[1])
+            print(f"高精度模式：增加曲线数量，倍数={factor}")
+            # 使用CHAIN_APPROX_SIMPLE进行轮廓近似，然后插值
+            contours, hierarchy = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+            print(f"轮廓数量：{len(contours)}，使用CHAIN_APPROX_SIMPLE")
+        else:
+            # 默认模式：使用CHAIN_APPROX_SIMPLE进行轮廓近似，减少重复点
+            print(f"高精度模式：{high_precision}")
+            contours, hierarchy = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+            print(f"轮廓数量：{len(contours)}，使用CHAIN_APPROX_SIMPLE")
 
         # 3. 生成 DXF
         doc = ezdxf.new('R2000')
@@ -150,6 +238,20 @@ def convert_dxf():
             for point in contour:
                 x, y = point[0]
                 points.append((float(x), float(y)))
+
+            # 高精度模式处理
+            if high_precision.startswith('more_points_') and len(points) > 2:
+                # 模式1：增加曲线数量 - 插值增加点数
+                # 使用从参数中提取的倍数
+                factor = int(high_precision.split('_')[1])
+                print(f"原始点数：{len(points)}，倍数：{factor}")
+                points = interpolate_points(points, factor=factor)
+                print(f"插值后点数：{len(points)}")
+            elif high_precision == 'curve_edge' and len(points) > 2:
+                # 模式2：曲线边缘 - 使用样条曲线
+                print(f"原始点数：{len(points)}，使用曲线边缘")
+                points = smooth_curve(points)
+                print(f"平滑后点数：{len(points)}")
 
             # 过滤太短的轮廓（噪点）
             if len(points) > 2:
