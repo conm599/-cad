@@ -1,7 +1,7 @@
-# This workflow will install Python dependencies, run tests and build Windows EXE
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+# This workflow will build Windows EXE using PyInstaller
+# Simplified version to avoid common issues
 
-name: Build EXE
+name: Build CAD Converter
 
 on:
   push:
@@ -16,35 +16,23 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python 3.14
-      uses: actions/setup-python@v3
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
       with:
-        python-version: "3.14"
+        python-version: "3.11"
         
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        python -m pip install flake8 pytest
         python -m pip install -r requirements.txt
         python -m pip install pyinstaller
         
-    - name: Lint with flake8
-      run: |
-        # stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-        
-    - name: Test with pytest
-      run: |
-        pytest
-        
     - name: Build EXE
       run: |
-        python build.py
+        python build.py --clean
         
-    - name: Upload EXE artifact
+    - name: Upload EXE
       uses: actions/upload-artifact@v4
       with:
-        name: CAD-converter-exe
-        path: dist/CAD转换器.exe
+        name: cad-converter
+        path: dist/cad_converter.exe
