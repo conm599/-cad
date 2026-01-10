@@ -19,7 +19,7 @@
 ### 方法二：从源码运行
 1. 克隆仓库：
    ```bash
-   git clone <仓库地址>
+   git clone github.com/conm599/-cad
    cd cad
    ```
 
@@ -116,3 +116,4 @@ MIT License
 - 初始版本发布
 - 支持基本的图像转DXF功能
 - 实现忽略边缘功能
+
