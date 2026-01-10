@@ -1,6 +1,6 @@
 """
-CAD图像转换器 - 完整打包脚本
-包含所有必要的模块，避免运行时错误
+CAD图像转换器 - GitHub Actions兼容打包脚本
+避免中文文件名和其他兼容性问题
 """
 
 import os
@@ -17,21 +17,21 @@ def clean_build_files():
                 shutil.rmtree(path)
                 print(f"已清理目录: {path}")
 
-def build_full_exe():
-    """完整打包，包含所有模块"""
-    print("开始完整打包...")
+def build_exe():
+    """EXE打包 - 兼容版本"""
+    print("开始打包...")
     
     cmd = [
         sys.executable, '-m', 'PyInstaller',
         '--onefile',
-        '--name', 'CAD转换器',
+        '--name', 'cad_converter',  # 使用英文名避免编码问题
         '--clean',
         '--noconfirm',
         
         # 数据文件
         '--add-data', 'templates;templates',
         
-        # 核心Python模块
+        # 核心模块
         '--hidden-import', 'cv2',
         '--hidden-import', 'numpy',
         '--hidden-import', 'ezdxf',
@@ -49,7 +49,6 @@ def build_full_exe():
         '--hidden-import', 'charset_normalizer',
         '--hidden-import', 'idna',
         '--hidden-import', 'urllib3',
-        '--hidden-import', 'requests',
         '--hidden-import', 'imageio',
         '--hidden-import', 'networkx',
         '--hidden-import', 'packaging',
@@ -65,20 +64,30 @@ def build_full_exe():
         'main.py'
     ]
     
-    print(f"执行打包命令...")
-    result = subprocess.run(cmd, check=False)
-    
-    if result.returncode == 0:
-        exe_path = os.path.join('dist', 'CAD转换器.exe')
-        if os.path.exists(exe_path):
-            size_mb = os.path.getsize(exe_path) / (1024 * 1024)
-            print(f"\n打包成功！")
-            print(f"可执行文件: {exe_path}")
-            print(f"文件大小: {size_mb:.2f} MB")
-    else:
-        print(f"打包失败，错误码: {result.returncode}")
+    try:
+        print("执行打包命令...")
+        # 使用subprocess.run而不是check=False，避免编码问题
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, encoding='utf-8')
+        
+        if result.returncode == 0:
+            exe_path = os.path.join('dist', 'cad_converter.exe')
+            if os.path.exists(exe_path):
+                size_mb = os.path.getsize(exe_path) / (1024 * 1024)
+                print("\n打包成功！")
+                print(f"可执行文件: {exe_path}")
+                print(f"文件大小: {size_mb:.2f} MB")
+            else:
+                print("\n错误：未找到生成的可执行文件")
+        else:
+            print(f"\n打包失败，错误码: {result.returncode}")
+            if result.stdout:
+                print(f"输出: {result.stdout}")
+            if result.stderr:
+                print(f"错误信息: {result.stderr}")
+    except Exception as e:
+        print(f"\n打包过程中出现异常: {str(e)}")
 
 if __name__ == '__main__':
     if '--clean' in sys.argv:
         clean_build_files()
-    build_full_exe()
+    build_exe()
