@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>专业CAD转换器 - Python驱动</title>
+    <style>
+        :root {
+            /* 深沉暗黑配色 */
+            --bg-dark: #121212;
+            --bg-panel: #1e1e1e;
+            --bg-input: #2c2c2c;
+            --primary: #007acc; /* VS Code Blue */
+            --primary-hover: #005f9e;
+            --text-main: #e0e0e0;
+            --text-muted: #888;
+            --border: #333;
+            --success: #4caf50;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; }
+        
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace; /* 编程风格字体 */
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* 左侧控制区 */
+        aside {
+            width: 340px;
+            background-color: var(--bg-panel);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            overflow-y: auto;
+            flex-shrink: 0;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+
+        /* 右侧预览区 */
+        main {
+            flex: 1;
+            background-color: #0e0e0e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            padding: 40px;
+            overflow: auto;
+            background-image: radial-gradient(#333 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        /* 控件样式 */
+        h1 { font-size: 1.2rem; color: var(--primary); margin-bottom: 30px; letter-spacing: 1px; border-bottom: 1px solid var(--border); padding-bottom: 15px;}
+        
+        .control-group { margin-bottom: 25px; }
+        label { display: block; color: var(--text-muted); margin-bottom: 8px; font-size: 0.9rem; }
+
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            background: var(--bg-input);
+            border-radius: 2px;
+            -webkit-appearance: none;
+            margin-bottom: 5px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--primary);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+        .val-display { float: right; color: var(--primary); font-weight: bold; }
+
+        .file-box {
+            border: 1px dashed var(--primary);
+            background: rgba(0, 122, 204, 0.05);
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.3s;
+            border-radius: 4px;
+            color: var(--primary);
+            margin-bottom: 20px;
+        }
+        .file-box:hover { background: rgba(0, 122, 204, 0.1); }
+        input[type="file"] { display: none; }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: inherit;
+            transition: 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+        .btn-process { background: var(--primary); color: white; }
+        .btn-process:hover { background: var(--primary-hover); }
+        .btn-download { background: var(--success); color: white; display: none; }
+        .btn-download:hover { background: #43a047; }
+        .btn-green { 
+            display: block; 
+            background: #4caf50; 
+            color: white; 
+            text-align: center; 
+            padding: 12px; 
+            border-radius: 4px; 
+            text-decoration: none; 
+            margin-bottom: 20px; 
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        .btn-green:hover { background: #43a047; }
+        .btn:disabled { background: var(--bg-input); color: var(--text-muted); cursor: not-allowed; }
+
+        .checkbox-wrapper { display: flex; align-items: center; cursor: pointer; }
+        .checkbox-wrapper input { margin-right: 10px; accent-color: var(--primary); }
+
+        /* 预览图 */
+        #previewImg {
+            max-width: 100%;
+            max-height: 100%;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border: 1px solid var(--border);
+        }
+        .loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--primary); font-size: 1.5rem; display: none; pointer-events: none;}
+        
+        .status { font-size: 0.8rem; color: var(--text-muted); margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border); }
+    </style>
+</head>
+<body>
+
+<aside>
+    <a href="/multi_image" class="btn-green">多图片布局工具</a>
+    <h1>// CAD 转换器</h1>
+    
+    <div class="control-group">
+        <label class="file-box" for="fileInput">
+            [ 加载图片 ]
+            <input type="file" id="fileInput" accept="image/*">
+        </label>
+    </div>
+
+    <div class="control-group">
+        <label>阈值 <span id="threshVal" class="val-display">128</span></label>
+        <input type="range" id="thresholdRange" min="0" max="255" value="128" disabled>
+    </div>
+
+    <div class="control-group">
+        <label class="checkbox-wrapper">
+            <input type="checkbox" id="invertCheck" disabled>
+            <span>反色 (黑色背景)</span>
+        </label>
+    </div>
+
+    <div class="control-group">
+        <label class="checkbox-wrapper">
+            <input type="checkbox" id="singleLineCheck" disabled>
+            <span>单线条模式</span>
+        </label>
+    </div>
+
+    <div class="control-group">
+        <label class="checkbox-wrapper">
+            <input type="checkbox" id="ignoreBorderCheck" disabled>
+            <span>忽略边缘</span>
+        </label>
+    </div>
+
+    <div class="control-group">
+        <label>填充颜色</label>
+        <select id="fillColorSelect" disabled style="width: 100%; padding: 8px; background-color: var(--bg-input); color: var(--text-main); border: 1px solid var(--border); border-radius: 4px; font-family: inherit;">
+            <option value="none">不填充</option>
+            <option value="white">白色填充</option>
+            <option value="black">黑色填充</option>
+        </select>
+    </div>
+
+    <div class="control-group">
+        <label>高精度模式</label>
+        <select id="highPrecisionSelect" disabled style="width: 100%; padding: 8px; background-color: var(--bg-input); color: var(--text-main); border: 1px solid var(--border); border-radius: 4px; font-family: inherit;">
+            <option value="none">无</option>
+            <option value="more_points_8">增加曲线数量 (8倍)</option>
+            <option value="more_points_16">增加曲线数量 (16倍)</option>
+            <option value="more_points_32">增加曲线数量 (32倍)</option>
+            <option value="more_points_48">增加曲线数量 (48倍)</option>
+            <option value="more_points_64">增加曲线数量 (64倍)</option>
+            <option value="curve_edge">曲线边缘</option>
+        </select>
+    </div>
+
+    <div class="control-group">
+        <button id="btnProcess" class="btn btn-process" disabled>[ 更新预览 ]</button>
+        <button id="btnDownload" class="btn btn-download" onclick="downloadDXF()">[ 导出DXF ]</button>
+    </div>
+
+    <div class="status" id="statusBar">就绪。等待输入...</div>
+</aside>
+
+<main>
+    <div class="loading" id="loader">处理中...</div>
+    <img id="previewImg" src="" alt="预览" style="display: none;">
+    <div id="placeholder" style="color: var(--text-muted);">// 未加载图片</div>
+</main>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const previewImg = document.getElementById('previewImg');
+    const thresholdRange = document.getElementById('thresholdRange');
+    const threshVal = document.getElementById('threshVal');
+    const invertCheck = document.getElementById('invertCheck');
+    const singleLineCheck = document.getElementById('singleLineCheck');
+    const ignoreBorderCheck = document.getElementById('ignoreBorderCheck');
+    const fillColorSelect = document.getElementById('fillColorSelect');
+    const highPrecisionSelect = document.getElementById('highPrecisionSelect');
+    const btnProcess = document.getElementById('btnProcess');
+    const btnDownload = document.getElementById('btnDownload');
+    const statusBar = document.getElementById('statusBar');
+    const loader = document.getElementById('loader');
+    const placeholder = document.getElementById('placeholder');
+
+    let currentFile = null;
+
+    // 文件选择
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            currentFile = e.target.files[0];
+            enableControls();
+            updateStatus(`Loaded: ${currentFile.name} (${(currentFile.size/1024).toFixed(1)}KB)`);
+            requestPreview();
+        }
+    });
+
+    // 控件变更
+    thresholdRange.addEventListener('input', () => {
+        threshVal.innerText = thresholdRange.value;
+    });
+    // 松开滑块或更改复选框时才请求，防止频繁请求
+    thresholdRange.addEventListener('change', requestPreview);
+    invertCheck.addEventListener('change', requestPreview);
+    singleLineCheck.addEventListener('change', function() {
+        if (this.checked) {
+            invertCheck.checked = true;
+        }
+        requestPreview();
+    });
+    ignoreBorderCheck.addEventListener('change', requestPreview);
+    btnProcess.addEventListener('click', requestPreview);
+
+    function enableControls() {
+        thresholdRange.disabled = false;
+        invertCheck.disabled = false;
+        singleLineCheck.disabled = false;
+        ignoreBorderCheck.disabled = false;
+        fillColorSelect.disabled = false;
+        highPrecisionSelect.disabled = false;
+        btnProcess.disabled = false;
+        previewImg.style.display = 'block';
+        placeholder.style.display = 'none';
+    }
+
+    async function requestPreview() {
+        if (!currentFile) return;
+
+        setLoading(true);
+        updateStatus("正在处理二进制数据...");
+
+        const formData = new FormData();
+        formData.append('image', currentFile);
+        formData.append('threshold', thresholdRange.value);
+        formData.append('invert', invertCheck.checked);
+        formData.append('single_line', singleLineCheck.checked);
+        formData.append('ignore_border', ignoreBorderCheck.checked);
+        formData.append('fill_color', fillColorSelect.value);
+        formData.append('high_precision', highPrecisionSelect.value);
+
+        try {
+            const response = await fetch('/process_preview', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                previewImg.src = 'data:image/png;base64,' + result.image;
+                updateStatus("预览已更新。准备导出。");
+                btnDownload.style.display = 'block';
+            } else {
+                alert("错误: " + result.message);
+                updateStatus("发生错误。");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("服务器连接错误。");
+            updateStatus("服务器连接错误。");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    function downloadDXF() {
+        if (!currentFile) return;
+        setLoading(true);
+        updateStatus("正在矢量化并生成DXF...");
+
+        const formData = new FormData();
+        formData.append('image', currentFile);
+        formData.append('threshold', thresholdRange.value);
+        formData.append('invert', invertCheck.checked);
+        formData.append('single_line', singleLineCheck.checked);
+        formData.append('ignore_border', ignoreBorderCheck.checked);
+
+        // 创建隐藏表单下载，避免流处理的前端复杂性
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/convert_dxf', true);
+        xhr.responseType = 'blob';
+        
+        xhr.onload = function(e) {
+            if (this.status === 200) {
+                const blob = new Blob([this.response], {type: 'application/dxf'});
+                const link = document.createElement('a');
+                link.href = window.URL.createObjectURL(blob);
+                link.download = 'drawing.dxf';
+                link.click();
+                updateStatus("DXF下载成功。");
+            } else {
+                alert("转换失败。");
+                updateStatus("转换错误。");
+            }
+            setLoading(false);
+        };
+
+        xhr.send(formData);
+    }
+
+    function setLoading(isLoading) {
+        loader.style.display = isLoading ? 'block' : 'none';
+        previewImg.style.opacity = isLoading ? '0.5' : '1';
+    }
+
+    function updateStatus(msg) {
+        statusBar.innerText = `// ${msg}`;
+    }
+</script>
+
+</body>
+</html>
