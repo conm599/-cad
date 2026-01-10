@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多图片布局工具</title>
+    <style>
+        :root {
+            --bg-dark: #121212;
+            --bg-panel: #1e1e1e;
+            --bg-input: #2c2c2c;
+            --primary: #007acc;
+            --primary-hover: #005f9e;
+            --text-main: #e0e0e0;
+            --text-muted: #888;
+            --border: #333;
+            --success: #4caf50;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; }
+        
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            background-color: var(--bg-panel);
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        h1 {
+            font-size: 18px;
+            color: var(--text-main);
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn-success {
+            background-color: var(--success);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background-color: #45a049;
+        }
+
+        .btn-secondary {
+            background-color: var(--bg-input);
+            color: var(--text-main);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background-color: #3a3a3a;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        #canvasContainer {
+            flex: 1;
+            overflow: auto;
+            background-color: #0e0e0e;
+            position: relative;
+            padding: 20px;
+        }
+
+        #canvas {
+            background-color: white;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            cursor: move;
+        }
+
+        .image-item {
+            position: absolute;
+            cursor: move;
+            border: 2px solid transparent;
+            transition: border-color 0.2s;
+        }
+
+        .image-item:hover {
+            border-color: var(--primary);
+        }
+
+        .image-item.selected {
+            border-color: var(--success);
+            z-index: 1000;
+        }
+
+        .image-item img {
+            display: block;
+            max-width: 300px;
+            max-height: 300px;
+            pointer-events: none;
+        }
+
+        .image-item .delete-btn {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            width: 24px;
+            height: 24px;
+            background-color: #f44336;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .image-item:hover .delete-btn {
+            display: flex;
+        }
+
+        .empty-state {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+        }
+
+        .status-bar {
+            background-color: var(--bg-panel);
+            padding: 8px 20px;
+            border-top: 1px solid var(--border);
+            font-size: 12px;
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+
+        .help-text {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>多图片布局工具</h1>
+        <div class="header-controls">
+            <span class="help-text">拖拽图片调整位置和顺序</span>
+            <button class="btn btn-secondary" onclick="clearAll()">清空</button>
+            <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">上传图片</button>
+            <button class="btn btn-success" onclick="exportImage()">导出图片</button>
+        </div>
+    </header>
+
+    <div id="canvasContainer">
+        <div id="canvas">
+            <div class="empty-state" id="emptyState">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                    <polyline points="21 15 16 10 5 21"></polyline>
+                </svg>
+                <p>点击"上传图片"按钮或拖拽图片到此处</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-bar" id="statusBar">
+        就绪
+    </div>
+
+    <input type="file" id="fileInput" multiple accept="image/*" onchange="handleFileSelect(event)">
+
+    <script>
+        let images = [];
+        let selectedImage = null;
+        let isDragging = false;
+        let dragOffset = { x: 0, y: 0 };
+        let zIndexCounter = 1;
+
+        const canvas = document.getElementById('canvas');
+        const canvasContainer = document.getElementById('canvasContainer');
+        const emptyState = document.getElementById('emptyState');
+        const statusBar = document.getElementById('statusBar');
+
+        canvasContainer.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            canvasContainer.style.backgroundColor = '#1a1a1a';
+        });
+
+        canvasContainer.addEventListener('dragleave', () => {
+            canvasContainer.style.backgroundColor = '#0e0e0e';
+        });
+
+        canvasContainer.addEventListener('drop', (e) => {
+            e.preventDefault();
+            canvasContainer.style.backgroundColor = '#0e0e0e';
+            const files = e.dataTransfer.files;
+            handleFiles(files);
+        });
+
+        function handleFileSelect(event) {
+            const files = event.target.files;
+            handleFiles(files);
+            event.target.value = '';
+        }
+
+        function handleFiles(files) {
+            Array.from(files).forEach(file => {
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            addImageToCanvas(img, file.name);
+                        };
+                        img.src = e.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+
+        function addImageToCanvas(img, name) {
+            const imageItem = document.createElement('div');
+            imageItem.className = 'image-item';
+            imageItem.style.left = '20px';
+            imageItem.style.top = '20px';
+            imageItem.style.zIndex = zIndexCounter++;
+            
+            const imgElement = document.createElement('img');
+            imgElement.src = img.src;
+            imgElement.alt = name;
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.innerHTML = '×';
+            deleteBtn.onclick = (e) => {
+                e.stopPropagation();
+                removeImage(imageItem);
+            };
+
+            imageItem.appendChild(imgElement);
+            imageItem.appendChild(deleteBtn);
+            canvas.appendChild(imageItem);
+
+            images.push({
+                element: imageItem,
+                img: img,
+                name: name,
+                x: 20,
+                y: 20,
+                width: imgElement.width,
+                height: imgElement.height
+            });
+
+            setupDragEvents(imageItem);
+            updateEmptyState();
+            updateStatus(`已添加: ${name}`);
+        }
+
+        function setupDragEvents(imageItem) {
+            imageItem.addEventListener('mousedown', (e) => {
+                if (e.target.classList.contains('delete-btn')) return;
+                
+                e.preventDefault();
+                selectedImage = imageItem;
+                isDragging = true;
+                
+                const rect = imageItem.getBoundingClientRect();
+                dragOffset.x = e.clientX - rect.left;
+                dragOffset.y = e.clientY - rect.top;
+                
+                imageItem.classList.add('selected');
+                imageItem.style.zIndex = zIndexCounter++;
+            });
+
+            imageItem.addEventListener('touchstart', (e) => {
+                if (e.target.classList.contains('delete-btn')) return;
+                
+                e.preventDefault();
+                const touch = e.touches[0];
+                selectedImage = imageItem;
+                isDragging = true;
+                
+                const rect = imageItem.getBoundingClientRect();
+                dragOffset.x = touch.clientX - rect.left;
+                dragOffset.y = touch.clientY - rect.top;
+                
+                imageItem.classList.add('selected');
+                imageItem.style.zIndex = zIndexCounter++;
+            });
+        }
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging || !selectedImage) return;
+            
+            const canvasRect = canvas.getBoundingClientRect();
+            let newX = e.clientX - canvasRect.left - dragOffset.x;
+            let newY = e.clientY - canvasRect.top - dragOffset.y;
+            
+            newX = Math.max(0, newX);
+            newY = Math.max(0, newY);
+            
+            selectedImage.style.left = newX + 'px';
+            selectedImage.style.top = newY + 'px';
+            
+            const imageData = images.find(img => img.element === selectedImage);
+            if (imageData) {
+                imageData.x = newX;
+                imageData.y = newY;
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (selectedImage) {
+                selectedImage.classList.remove('selected');
+            }
+            isDragging = false;
+            selectedImage = null;
+        });
+
+        document.addEventListener('touchmove', (e) => {
+            if (!isDragging || !selectedImage) return;
+            
+            const touch = e.touches[0];
+            const canvasRect = canvas.getBoundingClientRect();
+            let newX = touch.clientX - canvasRect.left - dragOffset.x;
+            let newY = touch.clientY - canvasRect.top - dragOffset.y;
+            
+            newX = Math.max(0, newX);
+            newY = Math.max(0, newY);
+            
+            selectedImage.style.left = newX + 'px';
+            selectedImage.style.top = newY + 'px';
+            
+            const imageData = images.find(img => img.element === selectedImage);
+            if (imageData) {
+                imageData.x = newX;
+                imageData.y = newY;
+            }
+        });
+
+        document.addEventListener('touchend', () => {
+            if (selectedImage) {
+                selectedImage.classList.remove('selected');
+            }
+            isDragging = false;
+            selectedImage = null;
+        });
+
+        function removeImage(imageItem) {
+            const imageData = images.find(img => img.element === imageItem);
+            if (imageData) {
+                images = images.filter(img => img !== imageData);
+                imageItem.remove();
+                updateEmptyState();
+                updateStatus(`已删除: ${imageData.name}`);
+            }
+        }
+
+        function clearAll() {
+            if (images.length === 0) return;
+            
+            if (confirm('确定要清空所有图片吗？')) {
+                images.forEach(img => img.element.remove());
+                images = [];
+                updateEmptyState();
+                updateStatus('已清空所有图片');
+            }
+        }
+
+        function updateEmptyState() {
+            emptyState.style.display = images.length === 0 ? 'block' : 'none';
+        }
+
+        function updateStatus(message) {
+            statusBar.textContent = message;
+        }
+
+        function exportImage() {
+            if (images.length === 0) {
+                alert('请先添加图片');
+                return;
+            }
+
+            const exportCanvas = document.createElement('canvas');
+            const ctx = exportCanvas.getContext('2d');
+
+            let maxX = 0, maxY = 0;
+            images.forEach(img => {
+                const imgElement = img.element.querySelector('img');
+                const scaleX = imgElement.naturalWidth / imgElement.width;
+                const scaleY = imgElement.naturalHeight / imgElement.height;
+                maxX = Math.max(maxX, img.x * scaleX + imgElement.naturalWidth);
+                maxY = Math.max(maxY, img.y * scaleY + imgElement.naturalHeight);
+            });
+
+            exportCanvas.width = maxX + 40;
+            exportCanvas.height = maxY + 40;
+
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+            images.sort((a, b) => parseInt(a.element.style.zIndex) - parseInt(b.element.style.zIndex));
+
+            images.forEach(img => {
+                const imgElement = img.element.querySelector('img');
+                const scaleX = imgElement.naturalWidth / imgElement.width;
+                const scaleY = imgElement.naturalHeight / imgElement.height;
+                const x = img.x * scaleX;
+                const y = img.y * scaleY;
+                const width = imgElement.naturalWidth;
+                const height = imgElement.naturalHeight;
+                ctx.drawImage(img.img, x, y, width, height);
+            });
+
+            const link = document.createElement('a');
+            link.download = 'layout.png';
+            link.href = exportCanvas.toDataURL('image/png');
+            link.click();
+
+            updateStatus('已导出图片');
+        }
+    </script>
+</body>
+</html>
