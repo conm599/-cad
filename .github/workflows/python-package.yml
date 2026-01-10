@@ -1,4 +1,3 @@
-# This workflow will build Windows EXE using PyInstaller
 # Simplified version to avoid common issues
 
 name: Build CAD Converter
