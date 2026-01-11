@@ -310,4 +310,4 @@ def convert_dxf():
         return str(e), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
+    app.run(host='0.0.0.0', port=7869, debug=True, threaded=True)
